@@ -37,6 +37,26 @@ This produces:
 - `build/serial/serial_pipeline.exe`
 - `build/parallel/parallel_pipeline.exe`
 
+## Stage validation
+
+Validation is optional and does not change a normal run. Use `--validate` to
+print deterministic fingerprints for each completed stage, and use
+`--stop-after` to exit before later stages run.
+
+For example, these commands compare both pipelines through sparse-to-dense
+conversion without starting PCA:
+
+```powershell
+.\build\serial\serial_pipeline.exe --validate --stop-after dense
+.\build\parallel\parallel_pipeline.exe --validate --stop-after dense
+```
+
+Accepted stop stages are `load`, `hvg`, `dense`, `pca-fit`, `pca-transform`,
+and `kmeans`. Because floating-point CPU and GPU implementations may differ by
+rounding, a different PCA fingerprint identifies a checkpoint that needs a
+tolerance-based numerical comparison; it does not by itself prove the result
+is incorrect.
+
 The build succeeds with the original source, but currently reports these
 warnings:
 

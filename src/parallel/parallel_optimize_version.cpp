@@ -13,6 +13,7 @@
 #include "dense_matrix.h"
 #include "pca_cuda.h"
 #include "kmeans.h"
+#include "../pipeline_validation.h"
 
 // 一个简单的多轮次计时函数
 void benchmark(const std::string& name, int iterations, std::function<void()> func) {
@@ -77,7 +78,21 @@ void saveLabels(const std::string& filepath, const std::vector<int>& labels) {
     std::cout << "Save complete." << std::endl;
 }
 
-int main() {
+int main(int argc, char** argv) {
+    PipelineOptions options;
+    try {
+        options = parsePipelineOptions(argc, argv);
+    }
+    catch (const std::exception& error) {
+        std::cerr << "Argument error: " << error.what() << '\n';
+        printPipelineUsage("parallel_pipeline.exe");
+        return 2;
+    }
+    if (options.show_help) {
+        printPipelineUsage("parallel_pipeline.exe");
+        return 0;
+    }
+
     auto pipeline_start = std::chrono::high_resolution_clock::now();//整个程序计时
 
 
@@ -100,6 +115,13 @@ int main() {
 
     printf("Data Loaded\n");
 
+    if (options.validate) {
+        printValidationFingerprint("raw.indptr", raw_data.indptr.data(), raw_data.indptr.size());
+        printValidationFingerprint("raw.indices", raw_data.indices.data(), raw_data.indices.size());
+        printValidationFingerprint("raw.values", raw_data.values.data(), raw_data.values.size());
+    }
+    if (shouldStopAfter(options, "load")) return 0;
+
     // ---------------------------------------------------------
     // 2. 特征选择 (Select HVGs)
     // ---------------------------------------------------------
@@ -121,6 +143,11 @@ int main() {
 
     printf("Feature Selection Done\n");
 
+    if (options.validate) {
+        printValidationFingerprint("selected_genes", selected_genes.data(), selected_genes.size());
+    }
+    if (shouldStopAfter(options, "hvg")) return 0;
+
 
 // ---------------------------------------------------------
 // 3. 稀疏转稠密 (Sparse -> Dense)
@@ -139,6 +166,13 @@ int main() {
         dense_data.rows(), dense_data.cols());
 
     printf("Conversion Done\n");
+
+    if (options.validate) {
+        const std::size_t dense_count =
+            static_cast<std::size_t>(dense_data.rows()) * dense_data.cols();
+        printValidationFingerprint("dense_data", dense_data.data(), dense_count);
+    }
+    if (shouldStopAfter(options, "dense")) return 0;
     /*printf("\n=== Verification: First 3 Rows, First 15 Genes ===\n");*/
 
     //const float* raw_ptr = dense_data.data();
@@ -173,6 +207,13 @@ int main() {
 
     printf("PCA Fit Done");
 
+    if (options.validate) {
+        std::cout << '\n';
+        const auto& components = pca.getComponents();
+        printValidationFingerprint("pca.components", components.data(), components.size());
+    }
+    if (shouldStopAfter(options, "pca-fit")) return 0;
+
  // ---------------------------------------------------------
  // 5. 数据转换 (Transform)
  // ---------------------------------------------------------
@@ -191,6 +232,12 @@ int main() {
     //saveEmbeddings(output_dir + "pca_embeddings_parallel.csv", embedding, dense_data.rows(), n_pcs);
 
     printf("PCA Transform Done");
+
+    if (options.validate) {
+        std::cout << '\n';
+        printValidationFingerprint("pca.embedding", embedding.data(), embedding.size());
+    }
+    if (shouldStopAfter(options, "pca-transform")) return 0;
 
     // ---------------------------------------------------------
     // 聚类 (KMeans)
@@ -211,6 +258,12 @@ int main() {
         });
 
     printf("KMeans Clustering Done");
+
+    if (options.validate) {
+        std::cout << '\n';
+        printValidationFingerprint("kmeans.labels", labels.data(), labels.size());
+    }
+    if (shouldStopAfter(options, "kmeans")) return 0;
 
     auto pipeline_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> pipeline_elapsed = pipeline_end - pipeline_start;

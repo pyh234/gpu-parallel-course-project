@@ -42,7 +42,7 @@ DenseMatrix DenseMatrix::fromSparse(
 
             // 用数组下标直接查找
             // 只有当 gene_idx 在范围内，且对应的值不为 -1 
-            if (gene_idx < n_total_genes) {
+            if (gene_idx >= 0 && gene_idx < n_total_genes) {
                 int new_col = lookup_table[gene_idx];
 
                 if (new_col != -1) {
