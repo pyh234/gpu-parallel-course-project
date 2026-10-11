@@ -245,6 +245,10 @@ void CudaPCAManual::fit(const float* host_data, int n_samples, int n_features) {
     // 输出单次结果 (us)
     printf("    Run %2d: %.3f us\n", 1, milliseconds * 1000.0f);
 
+    h_mean_.resize(n_features);
+    h_scale_.resize(n_features);
+    cudaMemcpy(h_mean_.data(), d_mean, n_features * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_scale_.data(), d_scale, n_features * sizeof(float), cudaMemcpyDeviceToHost);
 
     // kernel 2
     printf("  [kernel 2] :\n");
@@ -347,7 +351,7 @@ void CudaPCAManual::fit(const float* host_data, int n_samples, int n_features) {
         cudaMemcpy(&aqq, &d_cov[q * n_features + q], sizeof(float), cudaMemcpyDeviceToHost);
         cudaMemcpy(&apq, &d_cov[p * n_features + q], sizeof(float), cudaMemcpyDeviceToHost);
 
-        float theta = 0.5f * std::atan2(2.0f * apq, app - aqq);
+        float theta = 0.5f * std::atan2(2.0f * apq, aqq - app);
         float c = std::cos(theta);
         float s = std::sin(theta);
 
@@ -405,7 +409,7 @@ void CudaPCAManual::fit(const float* host_data, int n_samples, int n_features) {
 
 void CudaPCAManual::transform(const float* host_data, float* host_result, int n_samples, int n_features) {
     // 简单实现：分配 -> 拷贝 -> 矩阵乘法 Kernel -> 拷贝回
-    float* d_data, * d_comps, * d_res;
+    float* d_data, * d_comps, * d_res, * d_mean, * d_scale;
     size_t data_size = (size_t)n_samples * n_features * sizeof(float);
     size_t comp_size = (size_t)n_components_ * n_features * sizeof(float);
     size_t res_size = (size_t)n_samples * n_components_ * sizeof(float);
@@ -413,9 +417,17 @@ void CudaPCAManual::transform(const float* host_data, float* host_result, int n_
     cudaMalloc(&d_data, data_size);
     cudaMalloc(&d_comps, comp_size);
     cudaMalloc(&d_res, res_size);
+    cudaMalloc(&d_mean, n_features * sizeof(float));
+    cudaMalloc(&d_scale, n_features * sizeof(float));
 
     cudaMemcpy(d_data, host_data, data_size, cudaMemcpyHostToDevice);
     cudaMemcpy(d_comps, h_components_.data(), comp_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_mean, h_mean_.data(), n_features * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_scale, h_scale_.data(), n_features * sizeof(float), cudaMemcpyHostToDevice);
+
+    int numBlocks = (n_samples * n_features + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    standardizeKernel <<<numBlocks, BLOCK_SIZE >>> (
+        d_data, d_mean, d_scale, n_samples * n_features, n_features);
 
     // 矩阵乘法
     dim3 dimBlock(16, 16);
@@ -425,5 +437,5 @@ void CudaPCAManual::transform(const float* host_data, float* host_result, int n_
 
     cudaMemcpy(host_result, d_res, res_size, cudaMemcpyDeviceToHost);
 
-    cudaFree(d_data); cudaFree(d_comps); cudaFree(d_res);
+    cudaFree(d_data); cudaFree(d_comps); cudaFree(d_res); cudaFree(d_mean); cudaFree(d_scale);
 }

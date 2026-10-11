@@ -104,7 +104,7 @@ void SerialPCA::jacobi_eigensolver(float* cov, int n_features) {
         float aqq = cov[q * n_features + q];
         float apq = cov[p * n_features + q];
 
-        float theta = 0.5f * std::atan2(2.0f * apq, app - aqq);
+        float theta = 0.5f * std::atan2(2.0f * apq, aqq - app);
         float c = std::cos(theta);
         float s = std::sin(theta);
 
